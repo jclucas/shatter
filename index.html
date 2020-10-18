@@ -81,6 +81,20 @@
             var body = new CANNON.Body({ mass: 1 });
             body.addShape(new CANNON.ConvexPolyhedron(phys_vertices, phys_faces));
             world.add(body);
+            body.position = new CANNON.Vec3(0, 2, 0);
+            body.quaternion = new CANNON.Quaternion(0.5, 0.5, 0.5, 0);
+
+            // add a static surface
+            var table_body = new CANNON.Body({ mass: 0 });
+            var table_shape = new CANNON.Box(new CANNON.Vec3(5, 0.5, 5));
+            table_body.addShape(table_shape);
+            world.addBody(table_body);
+            table_body.position = new CANNON.Vec3(0, -2, 0);
+            var table_geom = new THREE.BoxGeometry(10, 1, 10);
+            material = new THREE.MeshStandardMaterial({ color: 0xa0a0f0 });
+            var table_mesh = new THREE.Mesh(table_geom, material);
+            scene.add(table_mesh);
+            table_mesh.position.copy(table_body.position);
 
 			function animate() {
 
