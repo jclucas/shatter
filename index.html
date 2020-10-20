@@ -24,95 +24,9 @@
         <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/101/three.min.js"></script>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
 
-        <script src="/assets/plate_convex.js"></script>
+        <script src="assets/plate_convex.js"></script>
 
-        <script>
-
-            // SCENE
-
-            var scene = new THREE.Scene();
-            var camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 1, 5);
-
-            // PHYSICS WORLD
-
-            var world = new CANNON.World();
-            world.gravity.set(0, -10, 0);
-
-            // RENDERER
-
-            var renderer = new THREE.WebGLRenderer();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-			document.body.appendChild(renderer.domElement);
-
-            // LIGHTING
-
-            var pointLight = new THREE.PointLight();
-            pointLight.position.set(0, 10, 0);
-            scene.add(pointLight);
-            
-            var ambLight = new THREE.AmbientLight(0xffffff, 0.5);
-            scene.add(ambLight);
-            
-            // OBJECTS
-
-            var geometry = new THREE.Geometry();
-            var phys_vertices = [];
-            var phys_faces = [];
-
-            // get vertices
-            for (var i = 0; i < plate_convex.vertices.length; i += 3) {
-                geometry.vertices.push(new THREE.Vector3(plate_convex.vertices[i], plate_convex.vertices[i+1], plate_convex.vertices[i+2]));
-                phys_vertices.push(new CANNON.Vec3(plate_convex.vertices[i], plate_convex.vertices[i+1], plate_convex.vertices[i+2]));
-            }
-
-            // get faces
-            for (var i = 0; i < plate_convex.faces.length; i += 3) {
-                geometry.faces.push(new THREE.Face3(plate_convex.faces[i], plate_convex.faces[i+1], plate_convex.faces[i+2]));
-                phys_faces.push([plate_convex.faces[i], plate_convex.faces[i+1], plate_convex.faces[i+2]]);
-            }
-
-            // add to three.js scence
-            material = new THREE.MeshStandardMaterial({ color: 0xf0f0f0 });
-            var mesh = new THREE.Mesh(geometry, material);
-            scene.add(mesh);
-
-            // add to cannon.js world
-            var body = new CANNON.Body({ mass: 1 });
-            body.addShape(new CANNON.ConvexPolyhedron(phys_vertices, phys_faces));
-            world.add(body);
-            body.position = new CANNON.Vec3(0, 2, 0);
-            body.quaternion = new CANNON.Quaternion(0.5, 0.5, 0.5, 0);
-
-            // add a static surface
-            var table_body = new CANNON.Body({ mass: 0 });
-            var table_shape = new CANNON.Box(new CANNON.Vec3(5, 0.5, 5));
-            table_body.addShape(table_shape);
-            world.addBody(table_body);
-            table_body.position = new CANNON.Vec3(0, -2, 0);
-            var table_geom = new THREE.BoxGeometry(10, 1, 10);
-            material = new THREE.MeshStandardMaterial({ color: 0xa0a0f0 });
-            var table_mesh = new THREE.Mesh(table_geom, material);
-            scene.add(table_mesh);
-            table_mesh.position.copy(table_body.position);
-
-			function animate() {
-
-				requestAnimationFrame(animate);
-                world.step(1 / 60);
-                mesh.position.copy(body.position);
-                mesh.quaternion.copy(body.quaternion);
-				render();
-
-			};
-
-            function render() {
-                renderer.render(scene, camera);
-            }
-
-			animate();
-
-        </script>
+        <script src="js/index.js" type="module"></script>
 
     </body>
 
