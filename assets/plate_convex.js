@@ -78,3 +78,5 @@ var plate_convex = {
 		23, 21, 16
 	]
 }
+
+export default plate_convex;
