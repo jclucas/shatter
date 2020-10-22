@@ -5,15 +5,6 @@ export default class Game {
     
     objects = [];
 
-    onClick() {
-
-    }
-
-
-    onMouseMove(event) {
-
-    }
-
     init() {
 
         // SCENE
@@ -71,6 +62,16 @@ export default class Game {
         this.scene.add(table_mesh);
         table_mesh.position.copy(table_body.position);
 
+        // INTERACTION
+        
+        this.mouse = new THREE.Vector2();
+        this.raycaster = new THREE.Raycaster();
+
+        // bind event listeners
+        window.addEventListener("mousemove", this.onMouseMove.bind(this));
+        window.addEventListener("mouseup", this.onMouseUp.bind(this));
+        window.addEventListener("mousedown", this.onMouseDown.bind(this));
+
     }
 
     /**
@@ -91,16 +92,6 @@ export default class Game {
         this.world.remove(obj.body);
         this.scene.remove(obj.mesh);
         this.objects.splice(index, 1);
-
-        // remove physics bodies
-        // obj.bodies.forEach(body => {
-        //     this.world.removeBody(body);
-        // });
-
-        // remove render objects
-        // obj.mesh.objects.for
-        // this.scene.remove(obj.mesh)
-
 
     }
 
@@ -148,6 +139,30 @@ export default class Game {
         this.impact = dist;
 
     };
+
+    onMouseMove(event) {
+
+        this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        
+    }
+
+    onMouseDown(event) {
+
+        // get a ray from three raycaster
+        this.raycaster.setFromCamera(this.mouse, this.camera);
+        var ray = this.raycaster.ray;
+        
+        // cast into cannon world
+        var result = new CANNON.RaycastResult();
+        var to = ray.direction.multiplyScalar(100).add(ray.origin);
+        var hit = this.world.raycastClosest(ray.origin, to, result);
+
+    }
+
+    onMouseUp(event) {
+
+    }
 
     /**
      * Break an object. To be used outside of world.step()
