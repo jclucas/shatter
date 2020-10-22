@@ -5,6 +5,8 @@ export default class Game {
     
     objects = [];
 
+    clicked = null;
+
     init() {
 
         // SCENE
@@ -16,7 +18,7 @@ export default class Game {
         // PHYSICS WORLD
 
         this.world = new CANNON.World();
-        this.world.gravity.set(0, -10, 0);
+        this.world.gravity.set(0, -9.8, 0);
 
         // RENDERER
 
@@ -26,18 +28,19 @@ export default class Game {
 
         // LIGHTING
 
-        var pointLight = new THREE.PointLight();
-        pointLight.position.set(0, 10, 0);
-        this.scene.add(pointLight);
+        var dirLight = new THREE.DirectionalLight();
+        dirLight.position.set(10, 10, 10);
+        dirLight.castShadow = true;
+        this.scene.add(dirLight);
 
-        var ambLight = new THREE.AmbientLight(0xffffff, 0.5);
+        var ambLight = new THREE.AmbientLight(0x444444, 1);
         this.scene.add(ambLight);
 
         // OBJECTS
 
         var shape = Game.readShape(plate_convex);
         
-        var body = new CANNON.Body({ mass: 100 });
+        var body = new CANNON.Body({ mass: 10 });
         body.addShape(shape);
 
         var physObj = new PhysObject(body);
@@ -47,9 +50,6 @@ export default class Game {
         physObj.body.position = new CANNON.Vec3(0, 2, 0);
         physObj.body.quaternion = new CANNON.Quaternion(0.5, 0.5, 0.5, 0);
 
-        // add collision callback
-        physObj.body.addEventListener("collide", this.onCollide);
-
         // add a static surface
         var table_body = new CANNON.Body({ mass: 0 });
         var table_shape = new CANNON.Box(new CANNON.Vec3(5, 0.5, 5));
@@ -57,7 +57,7 @@ export default class Game {
         this.world.addBody(table_body);
         table_body.position = new CANNON.Vec3(0, -2, 0);
         var table_geom = new THREE.BoxGeometry(10, 1, 10);
-        var material = new THREE.MeshStandardMaterial({ color: 0xa0a0f0 });
+        var material = new THREE.MeshLambertMaterial({ color: 0xa0a0f0 });
         var table_mesh = new THREE.Mesh(table_geom, material);
         this.scene.add(table_mesh);
         table_mesh.position.copy(table_body.position);
@@ -122,28 +122,27 @@ export default class Game {
         this.renderer.render(this.scene, this.camera);
     }
 
-    /**
-     * Mark an object to be broken in the next update.
-     * @param {*} event 
-     */
-    onCollide(event) {
-
-        // cannon ContactEquation
-        var collision = event.contact;
-
-        var body = event.body;
-
-        // vector from obj center to collision point
-        var dist = (body == collision.bi) ? collision.ri : collision.rj;
-
-        this.impact = dist;
-
-    };
-
     onMouseMove(event) {
 
         this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
         this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+        if (this.clicked) {
+
+            // var pos = new THREE.Vector3(this.clicked.position.x, this.clicked.position.y, this.clicked.position.z);
+            // var mat = this.camera.projectionMatrix;
+            // pos = pos.applyMatrix4(mat);
+            
+            // pos.x = (pos.x * window.innerWidth / 2) + window.innerWidth / 2;
+            // pos.y = -(pos.y * window.innerHeight / 2) + window.innerHeight / 2;
+
+            // this.clicked.position.x = pos.x;
+            // this.clicked.position.y = pos.y;
+
+            this.clicked.position.x = this.mouse.x * 2;
+            this.clicked.position.y = this.mouse.y * 2;
+            
+        }
         
     }
 
@@ -155,12 +154,25 @@ export default class Game {
         
         // cast into cannon world
         var result = new CANNON.RaycastResult();
-        var to = ray.direction.multiplyScalar(100).add(ray.origin);
-        var hit = this.world.raycastClosest(ray.origin, to, result);
+        var to = ray.direction.multiplyScalar(1000).add(ray.origin);
+        var hit = this.world.raycastClosest(ray.origin, to, {}, result);
+
+        if (hit) {
+
+            this.clicked = result.body;
+            
+            // reset physics
+            this.clicked.velocity.set(0,0,0);
+            this.clicked.angularVelocity.set(0,0,0);
+            this.clicked.vlambda.set(0,0,0);
+            this.clicked.wlambda.set(0,0,0);
+        }
 
     }
 
     onMouseUp(event) {
+
+        this.clicked = null;
 
     }
 

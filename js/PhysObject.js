@@ -9,9 +9,12 @@ export default class PhysObject {
         // add to cannon.js world
         this.body = body;
 
-        // add to three.js scence
-        var material = new THREE.MeshStandardMaterial({ color: 0xf0f0f0 });
+        // add to three.js scene
+        var material = new THREE.MeshLambertMaterial({ color: 0xf0f0f0 });
         this.mesh = new THREE.Mesh(this.createGeometry(body.shapes[0]), material);
+        
+        // add collision callback
+        this.body.addEventListener("collide", this.onCollide);
 
     };
 
@@ -42,7 +45,7 @@ export default class PhysObject {
                 var x = new THREE.Vector3();
                 var y = new THREE.Vector3();
                 var n = new THREE.Vector3();
-                n.crossVectors(x.subVectors(v1, v2), y.subVectors(v2, v3));
+                n.crossVectors(x.subVectors(v2, v1), y.subVectors(v2, v3));
 
                 // get coordinate system where z = n
                 x.subVectors(v1, v2);
@@ -108,26 +111,6 @@ export default class PhysObject {
             bounds.push(box.convexPolyhedronRepresentation);
         }
 
-        bounds[0].vertices.forEach(v => {
-            v.x += size;
-            v.y += size;
-        });
-
-        bounds[1].vertices.forEach(v => {
-            v.x -= size;
-            v.y += size;
-        });
-
-        bounds[2].vertices.forEach(v => {
-            v.x -= size;
-            v.y -= size;
-        });
-
-        bounds[3].vertices.forEach(v => {
-            v.x += size;
-            v.y -= size;
-        });
-
         // generate list of new bodies
         var bodies = [];
 
@@ -141,7 +124,40 @@ export default class PhysObject {
 
         });
 
+        var worldImpact = 1;
+
+        bodies[0].position.x += worldImpact;
+        bodies[0].position.y += worldImpact;
+        bodies[1].position.x -= worldImpact;
+        bodies[1].position.y += worldImpact;
+        bodies[2].position.x -= worldImpact;
+        bodies[2].position.y -= worldImpact;
+        bodies[3].position.x += worldImpact;
+        bodies[3].position.y -= worldImpact;
+
         return bodies;
+
+    };
+    
+    /**
+     * Mark an object to be broken in the next update.
+     * @param {*} event 
+     */
+    onCollide(event) {
+
+        // cannon ContactEquation
+        var collision = event.contact;
+        var body = event.target;
+        var relv = body.mass * collision.getImpactVelocityAlongNormal();
+        
+        if (relv < 50) {
+            return;
+        }
+
+        // vector from obj center to collision point
+        var dist = (body == collision.bi) ? collision.ri : collision.rj;
+
+        this.impact = dist;
 
     };
 
