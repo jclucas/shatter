@@ -127,13 +127,13 @@ export default class PhysObject {
         var worldImpact = 1;
 
         bodies[0].position.x += worldImpact;
-        bodies[0].position.y += worldImpact;
+        bodies[0].position.z += worldImpact;
         bodies[1].position.x -= worldImpact;
-        bodies[1].position.y += worldImpact;
+        bodies[1].position.z += worldImpact;
         bodies[2].position.x -= worldImpact;
-        bodies[2].position.y -= worldImpact;
+        bodies[2].position.z -= worldImpact;
         bodies[3].position.x += worldImpact;
-        bodies[3].position.y -= worldImpact;
+        bodies[3].position.z -= worldImpact;
 
         return bodies;
 

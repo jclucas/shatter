@@ -124,23 +124,24 @@ export default class Game {
 
     onMouseMove(event) {
 
+        // save mouse position for raycaster
         this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
         this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
         if (this.clicked) {
 
-            // var pos = new THREE.Vector3(this.clicked.position.x, this.clicked.position.y, this.clicked.position.z);
-            // var mat = this.camera.projectionMatrix;
-            // pos = pos.applyMatrix4(mat);
-            
-            // pos.x = (pos.x * window.innerWidth / 2) + window.innerWidth / 2;
-            // pos.y = -(pos.y * window.innerHeight / 2) + window.innerHeight / 2;
+            // project clicked object's position into screen space
+            var worldPos = new THREE.Vector3();
+            worldPos.copy(this.clicked.position);
+            var depth = worldPos.project(this.camera).z;
 
-            // this.clicked.position.x = pos.x;
-            // this.clicked.position.y = pos.y;
+            // unproject mouse position into world space
+            var pos = new THREE.Vector3(this.mouse.x, this.mouse.y, depth);
+            pos = pos.unproject(this.camera);
 
-            this.clicked.position.x = this.mouse.x * 2;
-            this.clicked.position.y = this.mouse.y * 2;
+            // update object position
+            this.clicked.position.x = pos.x;
+            this.clicked.position.y = pos.y;
             
         }
         
@@ -161,7 +162,7 @@ export default class Game {
 
             this.clicked = result.body;
             
-            // reset physics
+            // reset physics ?
             this.clicked.velocity.set(0,0,0);
             this.clicked.angularVelocity.set(0,0,0);
             this.clicked.vlambda.set(0,0,0);
