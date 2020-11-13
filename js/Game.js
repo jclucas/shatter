@@ -1,11 +1,12 @@
 import plate_convex from '../assets/plate_convex.js'
+import Hand from './Hand.js';
 import PhysObject from './PhysObject.js'
 
 export default class Game {
     
     objects = [];
 
-    clicked = null;
+    hand;
 
     init() {
 
@@ -28,21 +29,18 @@ export default class Game {
 
         // LIGHTING
 
-        var dirLight = new THREE.DirectionalLight();
-        dirLight.position.set(10, 10, 10);
-        dirLight.castShadow = true;
-        this.scene.add(dirLight);
+        var light = new THREE.DirectionalLight();
+        light.position.set(10, 10, 10);
+        light.castShadow = true;
+        this.scene.add(light);
 
-        var ambLight = new THREE.AmbientLight(0x444444, 1);
-        this.scene.add(ambLight);
+        this.scene.add(new THREE.AmbientLight(0x444444, 1));
 
         // OBJECTS
 
         var shape = Game.readShape(plate_convex);
-        
         var body = new CANNON.Body({ mass: 10 });
         body.addShape(shape);
-
         var physObj = new PhysObject(body);
 
         // add to game state
@@ -59,11 +57,13 @@ export default class Game {
         var table_geom = new THREE.BoxGeometry(10, 1, 10);
         var material = new THREE.MeshLambertMaterial({ color: 0xa0a0f0 });
         var table_mesh = new THREE.Mesh(table_geom, material);
+        table_mesh.receiveShadow = true;
         this.scene.add(table_mesh);
         table_mesh.position.copy(table_body.position);
 
         // INTERACTION
         
+        this.hand = new Hand(this.world);
         this.mouse = new THREE.Vector2();
         this.raycaster = new THREE.Raycaster();
 
@@ -86,6 +86,10 @@ export default class Game {
     
     }
 
+    /**
+     * Remove a physics object from the game state
+     * @param {int} index index of a PhysObject
+     */
     remove(index) {
 
         var obj = this.objects[index];
@@ -110,9 +114,12 @@ export default class Game {
 
     }
 
-    animate = () => {
+    /**
+     * Game loop function
+     */
+    loop = () => {
 
-        requestAnimationFrame(this.animate);
+        requestAnimationFrame(this.loop);
         this.update();
         this.render();
 
@@ -128,20 +135,14 @@ export default class Game {
         this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
         this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
-        if (this.clicked) {
-
-            // project clicked object's position into screen space
-            var worldPos = new THREE.Vector3();
-            worldPos.copy(this.clicked.position);
-            var depth = worldPos.project(this.camera).z;
+        if (this.mouseDown) {
 
             // unproject mouse position into world space
-            var pos = new THREE.Vector3(this.mouse.x, this.mouse.y, depth);
+            var pos = new THREE.Vector3(this.mouse.x, this.mouse.y, this.depth);
             pos = pos.unproject(this.camera);
 
             // update object position
-            this.clicked.position.x = pos.x;
-            this.clicked.position.y = pos.y;
+            this.hand.move(pos);
             
         }
         
@@ -158,28 +159,28 @@ export default class Game {
         var to = ray.direction.multiplyScalar(1000).add(ray.origin);
         var hit = this.world.raycastClosest(ray.origin, to, {}, result);
 
-        if (hit) {
+        // save location of clicked camera plane
+        var worldPos = new THREE.Vector3();
+        worldPos.copy(result.hitPointWorld);
+        this.depth = worldPos.project(this.camera).z;
 
-            this.clicked = result.body;
-            
-            // reset physics ?
-            this.clicked.velocity.set(0,0,0);
-            this.clicked.angularVelocity.set(0,0,0);
-            this.clicked.vlambda.set(0,0,0);
-            this.clicked.wlambda.set(0,0,0);
+        if (hit) {
+            this.mouseDown = true;
+            this.hand.grab(result.body, result.hitPointWorld)
         }
 
     }
 
     onMouseUp(event) {
 
-        this.clicked = null;
+        this.mouseDown = false;
+        this.hand.release();
 
     }
 
     /**
      * Break an object. To be used outside of world.step()
-     * @param {*} index 
+     * @param {int} index index of the object to break
      */
     break(index) {
 

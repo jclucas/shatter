@@ -1,16 +1,21 @@
 export default class PhysObject {
 
+    /** CANNON.Body */
+    body;
+
+    /** THREE.Mesh */
+    mesh;
+
     /**
      * Read geometry to a new physics object.
      * @param {CANNON.Body} body
      */
     constructor(body) {
 
-        // add to cannon.js world
         this.body = body;
 
-        // add to three.js scene
-        var material = new THREE.MeshLambertMaterial({ color: 0xf0f0f0 });
+        // create three.js mesh
+        var material = new THREE.MeshPhongMaterial({ color: 0xf0f0f0 });
         this.mesh = new THREE.Mesh(this.createGeometry(body.shapes[0]), material);
         
         // add collision callback
@@ -73,6 +78,9 @@ export default class PhysObject {
 
         }
 
+        geometry.computeBoundingSphere();
+        geometry.computeFaceNormals();
+
         return geometry;
         
     };
@@ -115,13 +123,12 @@ export default class PhysObject {
         var bodies = [];
 
         bounds.forEach(bound => {
-
             var newBody = new CANNON.Body({mass: this.body.mass / 4});
             newBody.addShape(bound);
             newBody.position.copy(this.body.position);
+            newBody.position.vadd(impact);
             newBody.quaternion.copy(this.body.quaternion);
             bodies.push(newBody);
-
         });
 
         var worldImpact = 1;
