@@ -1,28 +1,29 @@
+import * as CANNON from 'cannon';
+
 /**
 * In-game "hand" for interacting with objects.
 */
 export default class Hand {
-
-    /** Body to which held objects are constrained */
-    joint;
-
-    /** Point-to-point constraint */
-    constraint = null;
-
-    /** Physics world */
-    world;
 
     /**
      * Constructor
      * @param {CANNON.PhysicsWorld} world 
      */
     constructor(world) {
+
+        // physics world
         this.world = world;
+
+        // body to which held objects are constrained
         this.joint = new CANNON.Body({ mass: 0 });
         this.joint.addShape(new CANNON.Sphere(0.1));
         this.joint.collisionFilterGroup = 0;
         this.joint.collisionFilterMask = 0;
         this.world.add(this.joint);
+
+        // point-to-point constraint
+        this.constraint = null;
+
     }
 
     /**

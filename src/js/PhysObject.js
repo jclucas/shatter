@@ -1,22 +1,24 @@
+import * as THREE from 'three';
+import * as CANNON from 'cannon';
+
 export default class PhysObject {
-
-    /** CANNON.Body */
-    body;
-
-    /** THREE.Mesh */
-    mesh;
 
     /**
      * Read geometry to a new physics object.
-     * @param {CANNON.Body} body
+     * @param {Array} vertices array of CANNON.Vec3 vertices
+     * @param {Array} faces array of arrays of vertex indices
+     * @param {Number} mass of CANNON.Body
      */
-    constructor(body) {
+    constructor(vertices, faces, mass) {
 
-        this.body = body;
+        // create cannon.js body
+        var shape = new CANNON.ConvexPolyhedron(vertices, faces);
+        this.body = new CANNON.Body({ mass: mass });
+        this.body.addShape(shape);
 
         // create three.js mesh
         var material = new THREE.MeshPhongMaterial({ color: 0xf0f0f0 });
-        this.mesh = new THREE.Mesh(this.createGeometry(body.shapes[0]), material);
+        this.mesh = new THREE.Mesh(this.createGeometry(shape), material);
         
         // add collision callback
         this.body.addEventListener("collide", this.onCollide);
@@ -103,6 +105,7 @@ export default class PhysObject {
     partition(impact) {
 
         // generate points
+        var points = this.generatePoints(impact)
 
         var bounds = [];
 
@@ -119,32 +122,48 @@ export default class PhysObject {
             bounds.push(box.convexPolyhedronRepresentation);
         }
 
-        // generate list of new bodies
-        var bodies = [];
+        // generate list of new objects
+        var objects = [];
 
-        bounds.forEach(bound => {
-            var newBody = new CANNON.Body({mass: this.body.mass / 4});
-            newBody.addShape(bound);
-            newBody.position.copy(this.body.position);
-            newBody.position.vadd(impact);
-            newBody.quaternion.copy(this.body.quaternion);
-            bodies.push(newBody);
-        });
+        for (var i = 0; i < bounds.length; i++) {
+            var bound = bounds[i];
+            var fragment = this.clip(bound);
+            fragment.body.position.copy(this.body.position);
+            
+            var offset = impact.vadd(points[i]);
+            fragment.body.position.vadd(offset);
+            fragment.body.quaternion.copy(this.body.quaternion);
+            objects.push(fragment);
+        }
 
-        var worldImpact = 1;
+        return objects;
 
-        bodies[0].position.x += worldImpact;
-        bodies[0].position.z += worldImpact;
-        bodies[1].position.x -= worldImpact;
-        bodies[1].position.z += worldImpact;
-        bodies[2].position.x -= worldImpact;
-        bodies[2].position.z -= worldImpact;
-        bodies[3].position.x += worldImpact;
-        bodies[3].position.z -= worldImpact;
+    }
 
-        return bodies;
+    /**
+     * Generate a set of seed points
+     * @param {int} number of points to generate
+     * @param {CANNON.Vec3} center impact point
+     * @param {*} radius 
+     */
+    generatePoints(number, center, radius) {
 
-    };
+        var points = [];
+
+        // TEMP: split bounding box into 4
+        var size = this.body.shapes[0].boundingSphereRadius / 2 ;
+        points.push(new CANNON.Vec3(size, 0, size));
+        points.push(new CANNON.Vec3(-size, 0, size));
+        points.push(new CANNON.Vec3(-size, 0, -size));
+        points.push(new CANNON.Vec3(size, 0, -size));
+
+        return points;
+
+    }
+
+    clip(bound) {
+        return new PhysObject(bound.vertices, bound.faces, this.body.mass / 4);
+    }
     
     /**
      * Mark an object to be broken in the next update.
@@ -157,7 +176,7 @@ export default class PhysObject {
         var body = event.target;
         var relv = body.mass * collision.getImpactVelocityAlongNormal();
         
-        if (relv < 50) {
+        if (relv < 20) {
             return;
         }
 

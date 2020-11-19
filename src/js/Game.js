@@ -1,14 +1,12 @@
-import plate_convex from '../assets/plate_convex.js'
+import * as THREE from 'three';
+import * as CANNON from 'cannon';
+import cube from '../assets/cube.js';
 import Hand from './Hand.js';
-import PhysObject from './PhysObject.js'
+import PhysObject from './PhysObject.js';
 
 export default class Game {
-    
-    objects = [];
 
-    hand;
-
-    init() {
+    constructor() {
 
         // SCENE
 
@@ -38,10 +36,11 @@ export default class Game {
 
         // OBJECTS
 
-        var shape = Game.readShape(plate_convex);
-        var body = new CANNON.Body({ mass: 10 });
-        body.addShape(shape);
-        var physObj = new PhysObject(body);
+        // list of all physics objects
+        this.objects = [];
+        // var physObj = Game.readShape(plate_convex, 10);
+        var physObj = Game.readShape(cube, 10);
+        // var physObj = new PhysObject(body);
 
         // add to game state
         this.add(physObj);
@@ -71,6 +70,9 @@ export default class Game {
         window.addEventListener("mousemove", this.onMouseMove.bind(this));
         window.addEventListener("mouseup", this.onMouseUp.bind(this));
         window.addEventListener("mousedown", this.onMouseDown.bind(this));
+
+        // bind game loop function
+        this.loop = this.loop.bind(this);
 
     }
 
@@ -117,7 +119,7 @@ export default class Game {
     /**
      * Game loop function
      */
-    loop = () => {
+    loop() {
 
         requestAnimationFrame(this.loop);
         this.update();
@@ -193,7 +195,7 @@ export default class Game {
         fragments.forEach(f => {
 
             // create and push new phys object
-            this.add(new PhysObject(f));
+            this.add(f);
             
         });
 
@@ -203,10 +205,11 @@ export default class Game {
     };
 
     /**
-     * Read geometry data into a new CANNON.Shape
+     * Create a PhysObject directly from a file specifying its geometry
      * @param {*} data 
+     * @param {Number} mass of object
      */
-    static readShape(data) {
+    static readShape(data, mass) {
 
         var phys_vertices = [];
         var phys_faces = [];
@@ -221,7 +224,7 @@ export default class Game {
             phys_faces.push([data.faces[i], data.faces[i+1], data.faces[i+2]]);
         }
 
-        return new CANNON.ConvexPolyhedron(phys_vertices, phys_faces);
+        return new PhysObject(phys_vertices, phys_faces, mass);
 
     }
 
