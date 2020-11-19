@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon';
-import cube from '../assets/cube.js';
+import plate_convex from '../assets/plate_convex.js';
 import Hand from './Hand.js';
 import PhysObject from './PhysObject.js';
 
@@ -38,9 +38,7 @@ export default class Game {
 
         // list of all physics objects
         this.objects = [];
-        // var physObj = Game.readShape(plate_convex, 10);
-        var physObj = Game.readShape(cube, 10);
-        // var physObj = new PhysObject(body);
+        var physObj = Game.readShape(plate_convex, 10);
 
         // add to game state
         this.add(physObj);
