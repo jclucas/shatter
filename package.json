@@ -23,6 +23,7 @@
   "devDependencies": {
     "@babel/core": "^7.12.3",
     "babel-loader": "^8.2.1",
+    "html-webpack-plugin": "^5.0.0-alpha.14",
     "webpack": "^5.5.1",
     "webpack-cli": "^4.2.0"
   }
