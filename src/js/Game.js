@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon';
-import plate_convex from '../assets/plate_convex.js';
+import plate_convex from '../assets/plate_convex.js'
 import Hand from './Hand.js';
 import PhysObject from './PhysObject.js';
 
