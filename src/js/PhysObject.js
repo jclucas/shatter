@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon';
 var ConvexHull = require('convex-hull');
+var Voronoi = require('voronoi');
 
 const EPSILON = 1e-5;
 
@@ -110,7 +111,8 @@ export default class PhysObject {
     partition(impact) {
 
         // generate points
-        var points = this.generatePoints(impact)
+        var radius = this.body.shapes[0].boundingSphereRadius / 2 ;
+        var points = this.generatePoints(5, impact.scale(.5), radius);
 
         // find dividing planes
         var bounds = this.segment(points);
@@ -121,8 +123,10 @@ export default class PhysObject {
         // clip each bound and create a new object
         for (var i = 0; i < bounds.length; i++) {
             var fragment = this.clip(bounds[i], points[i]);
+            if (fragment == null) continue;
             fragment.body.updateBoundingRadius();
-            fragment.body.position.copy(this.body.position.vadd(points[i]));
+            var offset = this.body.quaternion.vmult(points[i]);
+            fragment.body.position.copy(this.body.position.vadd(offset));
             fragment.body.quaternion.copy(this.body.quaternion);
             fragment.update();
             objects.push(fragment);
@@ -142,12 +146,14 @@ export default class PhysObject {
 
         var points = [];
 
-        // TEMP: split bounding box into 4
-        var size = this.body.shapes[0].boundingSphereRadius / 2 ;
-        points.push(new CANNON.Vec3(size, size, 0));
-        points.push(new CANNON.Vec3(-size, size, 0));
-        points.push(new CANNON.Vec3(-size, -size, 0));
-        points.push(new CANNON.Vec3(size, -size, 0));
+        for (var i = 0; i < number; i++) {
+            var r = Math.random() * radius;
+            var angle = Math.round(Math.random() * 360);
+            var pt = new CANNON.Vec3().copy(center);
+            pt.x += r * Math.cos(angle);
+            pt.y += r * Math.sin(angle);
+            points.push(pt);
+        }
 
         return points;
 
@@ -161,27 +167,38 @@ export default class PhysObject {
      */
     segment(points) {
 
-        // TEMP: create 4 quadrants
+        // generate voronoi diagram
+        // use library for now
+        var vertices = [];
         var s = this.body.shapes[0].boundingSphereRadius;
-        var bounds = []
+        points.forEach(p => {
+            vertices.push({x: p.x, y: p.y});
+        });
+        var diagram = new Voronoi().compute(vertices, {xl: -s, xr: s, yt: -s, yb: s});
 
-        bounds.push([new CANNON.Vec3(0, 0, 0), new CANNON.Vec3(0, s, 0),
-            new CANNON.Vec3(s, s, 0), new CANNON.Vec3(s, 0, 0)]);
-        bounds.push([new CANNON.Vec3(0, 0, 0), new CANNON.Vec3(-s, 0, 0),
-                new CANNON.Vec3(-s, s, 0), new CANNON.Vec3(0, s, 0)]);
-        bounds.push([new CANNON.Vec3(0, 0, 0), new CANNON.Vec3(0, -s, 0),
-            new CANNON.Vec3(-s, -s, 0), new CANNON.Vec3(-s, 0, 0)]);
-        bounds.push([new CANNON.Vec3(0, 0, 0), new CANNON.Vec3(s, 0, 0),
-                new CANNON.Vec3(s, -s, 0), new CANNON.Vec3(0, -s, 0)]);
+        // clear points list so we can add them in order
+        points.splice(0, points.length);
+        var edges = [];
+        
+        // extract edge loops from cells
+        diagram.cells.forEach(cell => {
+            var loop = [];
+            cell.halfedges.forEach(edge => {
+                var v = edge.getStartpoint();
+                loop.push(new CANNON.Vec3(v.x, v.y, 0));
+            });
+            edges.push(loop);
+            points.push(new CANNON.Vec3(cell.site.x, cell.site.y, 0));
+        });
 
-        return bounds;
+        return edges;
 
     }
 
     /**
      * 
      * @param {Array} loop array of points defining a voronoi cell
-     * @return {CANNON.Shape}
+     * @return {CANNON.Shape} or null
      */
     clip(loop, center) {
 
@@ -345,6 +362,11 @@ export default class PhysObject {
         });
 
         var hull = new ConvexHull(hullVertices);
+
+        // empty hull emergency exit
+        if (hull.length == 0) {
+            return null;
+        }
 
         // move vertices so center is at 0,0,0 in object space
         for (var i = 0; i < outVertices.length; i++) {

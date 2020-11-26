@@ -19,7 +19,8 @@
   "dependencies": {
     "cannon": "^0.6.2",
     "convex-hull": "^1.0.3",
-    "three": "^0.122.0"
+    "three": "^0.122.0",
+    "voronoi": "^1.0.0"
   },
   "devDependencies": {
     "@babel/core": "^7.12.3",
