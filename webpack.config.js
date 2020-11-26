@@ -14,6 +14,11 @@ const config = {
                 test: /\.js$/,
                 use: 'babel-loader',
                 exclude: /node_modules/
+            },
+            {
+                test: /\.obj$/,
+                use: 'file-loader',
+                exclude: /node_modules/
             }
         ]
     },

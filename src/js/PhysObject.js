@@ -128,6 +128,8 @@ export default class PhysObject {
             var offset = this.body.quaternion.vmult(points[i]);
             fragment.body.position.copy(this.body.position.vadd(offset));
             fragment.body.quaternion.copy(this.body.quaternion);
+            fragment.body.velocity.copy(this.body.velocity);
+            fragment.body.angularVelocity.copy(this.body.angularVelocity);
             fragment.update();
             objects.push(fragment);
         }
@@ -161,7 +163,6 @@ export default class PhysObject {
 
     /**
      * Generate a segmentation based on a set of points
-     * TODO: FORTUNE GOES HERE!
      * @param {Array} points
      * @return {Array} list of edge loops
      */

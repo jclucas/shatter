@@ -1,8 +1,15 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon';
-import plate_convex from '../assets/plate_convex.js'
+import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
+
 import Hand from './Hand.js';
 import PhysObject from './PhysObject.js';
+
+// assets
+import plate_convex from '../assets/plate_convex.js';
+import hand from '../assets/hand.obj';
+import hand_grip from '../assets/hand_grip.obj';
+
 
 export default class Game {
 
@@ -11,6 +18,8 @@ export default class Game {
         // SCENE
 
         this.scene = new THREE.Scene();
+        this.scene_ui = new THREE.Scene();
+        this.scene_cursor = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         this.camera.position.set(0, 1, 5);
 
@@ -24,6 +33,7 @@ export default class Game {
         this.renderer = new THREE.WebGLRenderer();
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(this.renderer.domElement);
+        this.renderer.autoClear = false;
 
         // LIGHTING
 
@@ -31,10 +41,17 @@ export default class Game {
         light.position.set(10, 10, 10);
         light.castShadow = true;
         this.scene.add(light);
+        this.scene_cursor.add(new THREE.DirectionalLight().copy(light));
 
-        this.scene.add(new THREE.AmbientLight(0x444444, 1));
+        var ambient = new THREE.AmbientLight(0x444444, 1);
+        this.scene.add(ambient);
+        this.scene_cursor.add(ambient.clone());
 
         // OBJECTS
+
+        // obj file loader
+        const loader = new OBJLoader();
+        // const loader = new GLTFLoader();
 
         // list of all physics objects
         this.objects = [];
@@ -60,9 +77,31 @@ export default class Game {
 
         // INTERACTION
         
-        this.hand = new Hand(this.world);
         this.mouse = new THREE.Vector2();
         this.raycaster = new THREE.Raycaster();
+        
+        // load cursor mesh
+        loader.load(hand, function(obj) {
+            this.cursor = obj.children[0];
+            this.cursor.translateX(-10); // hide until active
+            this.cursor.setRotationFromEuler(new THREE.Euler(Math.PI/2, -Math.PI/2, Math.PI/6));
+            this.cursor.material = new THREE.MeshLambertMaterial({ color: 0xffffbb });
+            this.scene_cursor.add(this.cursor);
+
+            // add morph target
+            loader.load(hand_grip, function(obj) {
+                var target = obj.children[0];
+                var target_pos = target.geometry.getAttribute('position');
+                this.cursor.geometry.morphAttributes.position = [];
+                this.cursor.material.morphTargets = true;
+                this.cursor.geometry.morphAttributes.position.push(target_pos);
+                this.cursor.updateMorphTargets();
+                this.cursor.morphTargetInfluences[0] = 0;
+            }.bind(this));
+
+        }.bind(this));
+
+        this.hand = new Hand(this.world);
 
         // bind event listeners
         window.addEventListener("mousemove", this.onMouseMove.bind(this));
@@ -126,7 +165,12 @@ export default class Game {
     };
 
     render() {
+
+        this.renderer.clear();
         this.renderer.render(this.scene, this.camera);
+        this.renderer.clearDepth();
+        this.renderer.render(this.scene_cursor, this.camera);
+
     }
 
     onMouseMove(event) {
@@ -134,6 +178,11 @@ export default class Game {
         // save mouse position for raycaster
         this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
         this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+        // move cursor
+        var mousePos = new THREE.Vector3(this.mouse.x, this.mouse.y, 0.98);
+        mousePos = mousePos.unproject(this.camera);
+        this.cursor.position.copy(mousePos);
 
         if (this.mouseDown) {
 
@@ -166,16 +215,16 @@ export default class Game {
 
         if (hit) {
             this.mouseDown = true;
-            this.hand.grab(result.body, result.hitPointWorld)
+            this.hand.grab(result.body, result.hitPointWorld);
+            this.cursor.morphTargetInfluences[0] = 1;
         }
 
     }
 
     onMouseUp(event) {
-
         this.mouseDown = false;
         this.hand.release();
-
+        this.cursor.morphTargetInfluences[0] = 0;
     }
 
     /**
