@@ -176,6 +176,11 @@ export default class Game {
     update() {
 
         this.world.step(1 / 60);
+
+        // remove any objects that are far away
+        for (var i = this.objects.length - 1; i >= 0; i--) {
+            if (this.objects[i].body.position.y < -5) this.remove(i);
+        }
         
         // update all physics objects
         for (var i = 0; i < this.objects.length; i++) {
