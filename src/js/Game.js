@@ -4,24 +4,33 @@ import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 
 import Hand from './Hand.js';
 import PhysObject from './PhysObject.js';
+import Spawner from './Spawner.js';
 
 // assets
 import plate_convex from '../assets/plate_convex.js';
 import hand from '../assets/hand.obj';
 import hand_grip from '../assets/hand_grip.obj';
-
+import spawner from '../assets/spawner.obj'
 
 export default class Game {
 
     constructor() {
+
+        // DOM
+        
+        var game = document.getElementById('game');
+        var aspect = 4 / 3;
+        this.width = game.offsetWidth;
+        this.height = this.width / aspect;
 
         // SCENE
 
         this.scene = new THREE.Scene();
         this.scene_ui = new THREE.Scene();
         this.scene_cursor = new THREE.Scene();
-        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        this.camera = new THREE.PerspectiveCamera(50, aspect, 1, 1000);
         this.camera.position.set(0, 1, 5);
+        this.camera.setRotationFromEuler(new THREE.Euler(-Math.PI/8, 0, 0));
 
         // PHYSICS WORLD
 
@@ -31,8 +40,8 @@ export default class Game {
         // RENDERER
 
         this.renderer = new THREE.WebGLRenderer();
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(this.renderer.domElement);
+        this.renderer.setSize(this.width, this.height);
+        game.appendChild(this.renderer.domElement);
         this.renderer.autoClear = false;
 
         // LIGHTING
@@ -41,26 +50,21 @@ export default class Game {
         light.position.set(10, 10, 10);
         light.castShadow = true;
         this.scene.add(light);
+        this.scene_ui.add(new THREE.DirectionalLight().copy(light));
         this.scene_cursor.add(new THREE.DirectionalLight().copy(light));
 
         var ambient = new THREE.AmbientLight(0x444444, 1);
         this.scene.add(ambient);
+        this.scene_ui.add(ambient.clone());
         this.scene_cursor.add(ambient.clone());
 
         // OBJECTS
 
         // obj file loader
         const loader = new OBJLoader();
-        // const loader = new GLTFLoader();
 
         // list of all physics objects
         this.objects = [];
-        var physObj = Game.readShape(plate_convex, 10);
-
-        // add to game state
-        this.add(physObj);
-        physObj.body.position = new CANNON.Vec3(0, 2, 0);
-        physObj.body.quaternion = new CANNON.Quaternion(0.5, 0.5, 0.5, 0);
 
         // add a static surface
         var table_body = new CANNON.Body({ mass: 0 });
@@ -79,6 +83,7 @@ export default class Game {
         
         this.mouse = new THREE.Vector2();
         this.raycaster = new THREE.Raycaster();
+        this.mouseDepth = .5;
         
         // load cursor mesh
         loader.load(hand, function(obj) {
@@ -104,9 +109,36 @@ export default class Game {
         this.hand = new Hand(this.world);
 
         // bind event listeners
-        window.addEventListener("mousemove", this.onMouseMove.bind(this));
-        window.addEventListener("mouseup", this.onMouseUp.bind(this));
-        window.addEventListener("mousedown", this.onMouseDown.bind(this));
+        game.addEventListener("mousemove", this.onMouseMove.bind(this));
+        game.addEventListener("mouseup", this.onMouseUp.bind(this));
+        game.addEventListener("mouseout", this.onMouseUp.bind(this));
+        game.addEventListener("mousedown", this.onMouseDown.bind(this));
+
+        // USER INTERFACE
+
+        loader.load(spawner, function(obj) {var spawner_geom = new THREE.BoxGeometry(1, 1, 1);
+            
+            var spawner_geom = obj.children[0].geometry;
+            var spawner_mat = new THREE.MeshLambertMaterial({ color: 0xf0f0f0 });
+            this.spawner = new Spawner(spawner_geom, spawner_mat);
+            var spawner_pos = new THREE.Vector3(-.8, .825, 0); // approx camera height = 1
+            spawner_pos.unproject(this.camera);
+            this.spawner.position.copy(spawner_pos);
+            this.spawner.setRotationFromEuler(new THREE.Euler(Math.PI/12, -Math.PI/12, -Math.PI/12));
+            
+            this.spawner.setSpawnFunction(function(pos) {
+                var physObj = Game.readShape(plate_convex, 10);
+                physObj.body.position.copy(pos);
+                physObj.body.initPosition.copy(pos);
+                physObj.body.quaternion.setFromEuler(-Math.PI/2, 0, 0);
+                this.hand.grab(physObj.body, new CANNON.Vec3().copy(pos));
+                this.add(physObj);
+            }.bind(this));
+            
+            this.scene_ui.add(this.spawner);
+
+        }.bind(this));
+        
 
         // bind game loop function
         this.loop = this.loop.bind(this);
@@ -169,6 +201,8 @@ export default class Game {
         this.renderer.clear();
         this.renderer.render(this.scene, this.camera);
         this.renderer.clearDepth();
+        this.renderer.render(this.scene_ui, this.camera);
+        this.renderer.clearDepth();
         this.renderer.render(this.scene_cursor, this.camera);
 
     }
@@ -176,11 +210,11 @@ export default class Game {
     onMouseMove(event) {
 
         // save mouse position for raycaster
-        this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-        this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        this.mouse.x = (event.offsetX/ this.width) * 2 - 1;
+        this.mouse.y = -(event.offsetY / this.height) * 2 + 1;
 
-        // move cursor
-        var mousePos = new THREE.Vector3(this.mouse.x, this.mouse.y, 0.98);
+        // move cursor on cursor plane
+        var mousePos = new THREE.Vector3(this.mouse.x, this.mouse.y, this.mouseDepth);
         mousePos = mousePos.unproject(this.camera);
         this.cursor.position.copy(mousePos);
 
@@ -192,6 +226,9 @@ export default class Game {
 
             // update object position
             this.hand.move(pos);
+
+            // update ui element position
+            this.spawner.onMouseMove(pos);
             
         }
         
@@ -199,31 +236,39 @@ export default class Game {
 
     onMouseDown(event) {
 
+        this.mouseDown = true;
+
+        // update cursor animation
+        this.cursor.morphTargetInfluences[0] = 1;
+
         // get a ray from three raycaster
         this.raycaster.setFromCamera(this.mouse, this.camera);
         var ray = this.raycaster.ray;
+
+        // cast into ui scene
+        var ui_hit = this.raycaster.intersectObjects(this.scene_ui.children);
+        if (ui_hit.length > 0) ui_hit[0].object.onMouseDown();
         
         // cast into cannon world
         var result = new CANNON.RaycastResult();
         var to = ray.direction.multiplyScalar(1000).add(ray.origin);
-        var hit = this.world.raycastClosest(ray.origin, to, {}, result);
+        var phys_hit = this.world.raycastClosest(ray.origin, to, {}, result);
+
+        if (phys_hit) {
+            this.hand.grab(result.body, result.hitPointWorld);
+        }
 
         // save location of clicked camera plane
         var worldPos = new THREE.Vector3();
         worldPos.copy(result.hitPointWorld);
         this.depth = worldPos.project(this.camera).z;
 
-        if (hit) {
-            this.mouseDown = true;
-            this.hand.grab(result.body, result.hitPointWorld);
-            this.cursor.morphTargetInfluences[0] = 1;
-        }
-
     }
 
     onMouseUp(event) {
         this.mouseDown = false;
         this.hand.release();
+        this.spawner.onMouseUp();
         this.cursor.morphTargetInfluences[0] = 0;
     }
 

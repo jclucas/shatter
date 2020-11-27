@@ -24,6 +24,9 @@ export default class Hand {
         // point-to-point constraint
         this.constraint = null;
 
+        // true when we are holding something
+        this.active = false;
+
     }
 
     /**
@@ -32,6 +35,9 @@ export default class Hand {
      * @param {CANNON.Vec3} pos world position of mouse click
      */
     grab(body, pos) {
+
+        // register activity
+        this.active = true;
 
         // move joint to click position
         this.joint.position.copy(pos);
@@ -54,7 +60,8 @@ export default class Hand {
 
         // remove constraint
         this.world.removeConstraint(this.constraint);
-        this.constraint = false;
+        this.constraint = null;
+        this.active = false;
     
     }
 
@@ -63,8 +70,13 @@ export default class Hand {
      * @param {CANNON.Vec3} pos world space mouse position
      */
     move(pos) {
-        this.joint.position.copy(pos);
-        this.constraint.update();
+
+        // update joint if we're holding something
+        if (this.active) {
+            this.joint.position.copy(pos);
+            this.constraint.update();
+        }
+
     }
 
 }
