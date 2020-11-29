@@ -10,7 +10,10 @@ import Spawner from './Spawner.js';
 import plate_convex from '../assets/plate_convex.js';
 import hand from '../assets/hand.obj';
 import hand_grip from '../assets/hand_grip.obj';
-import spawner from '../assets/spawner.obj'
+import table from '../assets/table.obj';
+import wall from '../assets/wall.obj';
+import bg from '../assets/bg.obj';
+import spawner from '../assets/spawner.obj';
 
 export default class Game {
 
@@ -29,8 +32,9 @@ export default class Game {
         this.scene_ui = new THREE.Scene();
         this.scene_cursor = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(50, aspect, 1, 1000);
-        this.camera.position.set(0, 1, 5);
-        this.camera.setRotationFromEuler(new THREE.Euler(-Math.PI/8, 0, 0));
+        this.camera.position.set(0, 0, 5);
+        this.camera.setRotationFromEuler(new THREE.Euler(-5 * Math.PI / 180, 0, 0));
+        this.scene.background = new THREE.Color( 0x94bcbc );
 
         // PHYSICS WORLD
 
@@ -58,6 +62,12 @@ export default class Game {
         this.scene_ui.add(ambient.clone());
         this.scene_cursor.add(ambient.clone());
 
+        var interior = new THREE.PointLight(0x222222, 1);
+        interior.position.set(0, 5, 0);
+        this.scene.add(interior);
+        this.scene_ui.add(interior.clone());
+        this.scene_cursor.add(interior.clone());
+
         // OBJECTS
 
         // obj file loader
@@ -68,16 +78,50 @@ export default class Game {
 
         // add a static surface
         var table_body = new CANNON.Body({ mass: 0 });
-        var table_shape = new CANNON.Box(new CANNON.Vec3(5, 0.5, 5));
+        var table_shape = new CANNON.Box(new CANNON.Vec3(2.5, 0.1, 1));
         table_body.addShape(table_shape);
-        this.world.addBody(table_body);
         table_body.position = new CANNON.Vec3(0, -2, 0);
-        var table_geom = new THREE.BoxGeometry(10, 1, 10);
-        var material = new THREE.MeshLambertMaterial({ color: 0xa0a0f0 });
-        var table_mesh = new THREE.Mesh(table_geom, material);
-        table_mesh.receiveShadow = true;
-        this.scene.add(table_mesh);
-        table_mesh.position.copy(table_body.position);
+        this.world.addBody(table_body);
+
+        // load table
+        loader.load(table, function(obj) {
+            var table = obj.children[0];
+            table.material = new THREE.MeshLambertMaterial({ color: 0x36110a });
+            table.position.copy(table_body.position);
+            table.setRotationFromEuler(new THREE.Euler(0, Math.PI/2, 0));
+            this.scene.add(table);
+        }.bind(this));        
+
+        // load background wall
+        loader.load(wall, function(obj) {
+
+            var wall = obj.children[0];
+            wall.material = new THREE.MeshLambertMaterial({color: 0xffffff, vertexColors: true});
+            wall.position.set(0, -1, -5);
+            wall.setRotationFromEuler(new THREE.Euler(0, -Math.PI/2, 0));
+            this.scene.add(wall);
+
+            // add plane in physics world
+            var wall_body = new CANNON.Body({ mass: 0 });
+            wall_body.addShape(new CANNON.Plane());
+            wall_body.position.set(new CANNON.Vec3(0, 0, -5));
+            this.world.addBody(wall_body);
+
+        }.bind(this));
+
+        // load background landscape
+        loader.load(bg, function(obj) {
+            var bg = obj.children[0];
+            bg.material = new THREE.MeshLambertMaterial({color: 0x042d2d});
+            bg.position.set(0, -5, -60);
+            bg.setRotationFromEuler(new THREE.Euler(0, -Math.PI/2, 0));
+            this.scene.add(bg);
+        }.bind(this));
+
+        var sun = new THREE.Mesh(new THREE.CircleGeometry(2), 
+                new THREE.MeshBasicMaterial({color: 0x8f1600}));
+        sun.position.set(-10, 6, -60);
+        this.scene.add(sun);
 
         // INTERACTION
         
