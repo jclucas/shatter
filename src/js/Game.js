@@ -78,16 +78,16 @@ export default class Game {
 
         // add a static surface
         var table_body = new CANNON.Body({ mass: 0 });
-        var table_shape = new CANNON.Box(new CANNON.Vec3(2.5, 0.1, 1));
+        var table_shape = new CANNON.Box(new CANNON.Vec3(2.5, 0.6, 1));
         table_body.addShape(table_shape);
-        table_body.position = new CANNON.Vec3(0, -2, 0);
+        table_body.position = new CANNON.Vec3(0, -2.5, 0);
         this.world.addBody(table_body);
 
         // load table
         loader.load(table, function(obj) {
             var table = obj.children[0];
             table.material = new THREE.MeshLambertMaterial({ color: 0x36110a });
-            table.position.copy(table_body.position);
+            table.position.set(0, -2, 0);
             table.setRotationFromEuler(new THREE.Euler(0, Math.PI/2, 0));
             this.scene.add(table);
         }.bind(this));        
@@ -172,6 +172,7 @@ export default class Game {
             
             this.spawner.setSpawnFunction(function(pos) {
                 var physObj = Game.readShape(plate_convex, 10);
+                physObj.init();
                 physObj.body.position.copy(pos);
                 physObj.body.initPosition.copy(pos);
                 physObj.body.quaternion.setFromEuler(-Math.PI/2, 0, 0);
@@ -353,19 +354,13 @@ export default class Game {
     static readShape(data, mass) {
 
         var phys_vertices = [];
-        var phys_faces = [];
 
         // get vertices
         for (var i = 0; i < data.vertices.length; i += 3) {
             phys_vertices.push(new CANNON.Vec3(data.vertices[i], data.vertices[i+1], data.vertices[i+2]));
         }
 
-        // get faces
-        for (var i = 0; i < data.faces.length; i += 3) {
-            phys_faces.push([data.faces[i], data.faces[i+1], data.faces[i+2]]);
-        }
-
-        return new PhysObject(phys_vertices, phys_faces, mass);
+        return new PhysObject(phys_vertices, data.faces, mass);
 
     }
 

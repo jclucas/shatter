@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon';
-var ConvexHull = require('convex-hull');
+import { KeyframeTrack } from 'three';
 var Voronoi = require('voronoi');
 
 const EPSILON = 1e-5;
@@ -13,25 +13,83 @@ export default class PhysObject {
      * @param {Array} faces array of arrays of vertex indices
      * @param {Number} mass of CANNON.Body
      */
-    constructor(vertices, faces, mass) {
+    constructor(vertices, faces, mass, edges=null) {
 
         // create cannon.js body
         var shape = new CANNON.ConvexPolyhedron(vertices, faces);
         this.body = new CANNON.Body({ mass: mass });
         this.body.addShape(shape);
 
+        // compute edges if not provided
+        if (edges == null) {
+            this.computeEdges();
+        } else {
+            this.edges = edges;
+        }
+
+    };
+
+    /**
+     * Create visual and gameplay components
+     */
+    init() {
+
         // create three.js mesh
-        var material = new THREE.MeshPhongMaterial({ 
-            color: 0xf0f0f0, 
-            // side: THREE.DoubleSide,
-            // wireframe: true
-        });
-        this.mesh = new THREE.Mesh(this.createGeometry(shape), material);
+        var material = new THREE.MeshPhongMaterial({ color: 0xf0f0f0 });
+        this.mesh = new THREE.Mesh(this.createGeometry(this.body.shapes[0]), material);
         
         // add collision callback
         this.body.addEventListener("collide", this.onCollide);
 
-    };
+    }
+
+    /**
+     * Populates edge array based on vertices and faces.
+     */
+    computeEdges() {
+
+        // array of arrays of edges
+        this.edges = [];
+
+        // map of vertex pairs to edge indices
+        var vertexPairs = new Map();
+        let len = this.body.shapes[0].vertices.length;
+        var faces = this.body.shapes[0].faces;
+
+        faces.forEach(f => {
+
+            var loop = [];
+
+            for (var i = 0; i < f.length; i++) {
+
+                // get index of each point
+                var a = f[i];
+                var b = f[(i + 1) % f.length];
+
+                if (vertexPairs.has(a * len + b)) {
+                    loop.push(vertexPairs.get(a * len + b));
+                } else {
+
+                    // create new edge
+                    var edge = {a: a, b: b};
+                    var reverse = {a: b, b: a};
+                    edge.reverse = reverse;
+                    reverse.reverse = edge;
+
+                    // save edge
+                    vertexPairs.set(a * len + b, edge);
+                    vertexPairs.set(b * len + a, reverse);
+                    loop.push(edge);
+
+                }
+
+            }
+
+            this.edges.push(loop);
+
+        });
+
+    }
 
     /**
      * Create a THREE.Geometry from a given shape
@@ -114,22 +172,61 @@ export default class PhysObject {
         var radius = this.body.shapes[0].boundingSphereRadius / 2 ;
         var points = this.generatePoints(5, impact.scale(.5), radius);
 
-        // find dividing planes
-        var bounds = this.segment(points);
+        // find dividing edges
+        var edges = this.segment(points);
+        var bounds = [];
+        const up = new CANNON.Vec3(0, 0, 1);
 
+        // convert edge loop to list of planes
+        edges.forEach(loop => {
+            var planes = [];
+            for (var i = 0; i < loop.length; i++) {
+
+                var curr = loop[i];
+                var next = loop[(i + 1) % loop.length];
+                
+                // find normal
+                var n = up.cross(next.vsub(curr));
+                n.normalize();
+
+                // create plane
+                var p = new THREE.Plane();
+                p.setFromNormalAndCoplanarPoint(n, curr);
+                planes.push(p);
+
+            }
+            bounds.push(planes);
+        });
+        
         // generate list of new bodies
         var objects = [];
 
         // clip each bound and create a new object
         for (var i = 0; i < bounds.length; i++) {
-            var fragment = this.clip(bounds[i], points[i]);
+
+            var fragment = this;
+
+            for (var j = 0; j < bounds[i].length; j++) {
+                if (fragment == null) continue;
+                let center = (j == bounds[i].length - 1) ? points[i] : new CANNON.Vec3(0, 0, 0);
+                fragment = fragment.clip(bounds[i][j], center);
+            }
+
             if (fragment == null) continue;
-            fragment.body.updateBoundingRadius();
+
+            // create and place fragment
+            fragment.init();
             var offset = this.body.quaternion.vmult(points[i]);
             fragment.body.position.copy(this.body.position.vadd(offset));
             fragment.body.quaternion.copy(this.body.quaternion);
-            fragment.body.velocity.copy(this.body.velocity);
-            fragment.body.angularVelocity.copy(this.body.angularVelocity);
+
+            // adjust physics properties
+            let relMass = fragment.body.shapes[0].volume() / this.body.shapes[0].volume();
+            fragment.body.mass *= relMass;
+            fragment.body.velocity.copy(this.body.velocity);//.scale(relMass);
+            fragment.body.angularVelocity.copy(this.body.angularVelocity);//.scale(relMass);
+            fragment.body.inertia.copy(this.body.inertia);
+            fragment.body.force.copy(this.body.force);
             fragment.update();
             objects.push(fragment);
         }
@@ -169,9 +266,8 @@ export default class PhysObject {
     segment(points) {
 
         // generate voronoi diagram
-        // use library for now
         var vertices = [];
-        var s = this.body.shapes[0].boundingSphereRadius;
+        var s = this.body.shapes[0].boundingSphereRadius * 2;
         points.forEach(p => {
             vertices.push({x: p.x, y: p.y});
         });
@@ -201,181 +297,315 @@ export default class PhysObject {
      * @param {Array} loop array of points defining a voronoi cell
      * @return {CANNON.Shape} or null
      */
-    clip(loop, center) {
+    clip(plane, center) {
 
-        // convert edge loop to list of planes
-        var planes = [];
-        const up = new CANNON.Vec3(0, 0, 1);
-        
-        for (var i = 0; i < loop.length; i++) {
-
-            var curr = loop[i];
-            var prev = loop[(i + loop.length - 1) % loop.length];
-            
-            // find normal
-            var n = up.cross(curr.vsub(prev));
-            n.normalize();
-
-            // create plane
-            var p = new THREE.Plane();
-            p.setFromNormalAndCoplanarPoint(n, curr);
-            planes.push(p);
-
-        }
-
-        // start with the current geometry
+        // copy current geometry
         var vertices = this.body.shapes[0].vertices;
         var faces = this.body.shapes[0].faces;
-        var inFaces, inVertices;
-        var outVertices = vertices;
-        var outFaces = faces; 
+        var inVertices = [];
+        // var inVertices = [...vertices];
+        var inFaces = [];
+        var inEdges = [];
 
-        // clip each segment against each plane
-        planes.forEach(plane => {
+        // deep copy vertices
+        vertices.forEach(vertex => {
+            let newv = new CANNON.Vec3();
+            newv.copy(vertex);
+            inVertices.push(newv);
+        });
 
-            // use previous output as current input
-            inVertices = outVertices;
-            inFaces = outFaces;
-            outVertices = [];
-            outFaces = [];
-            var interPoints = [];
-            var proj = getProjectionMatrix(up, plane.normal);
+        // deep copy face arrays
+        faces.forEach(face => {
+            inFaces.push([...face]);
+        });
 
-            // keep track of existing vertices with changed indices
-            var moved = [];
-            for (var i = 0; i < inVertices.length; i++) {
-                moved[i] = -1;
+        // deep copy edge objects
+        let edgeMap = new Map();
+        let len = this.body.shapes[0].vertices.length;
+        for (let i = 0; i < this.edges.length; i++) {
+            inEdges.push([]);
+            for (let j = 0; j < this.edges[i].length; j++) {
+                let edge = this.edges[i][j];
+                if (edgeMap.has(edge.a * len + edge.b)) {
+                    inEdges[i].push(edgeMap.get(edge.a * len + edge.b));
+                } else {
+                    let copy = Object.assign({}, this.edges[i][j]);
+                    let revCopy = Object.assign({}, this.edges[i][j].reverse);
+                    copy.reverse = revCopy;
+                    revCopy.reverse = copy;
+                    inEdges[i].push(copy);
+                    edgeMap.set(edge.a * len + edge.b, copy);
+                    edgeMap.set(edge.b * len + edge.a, revCopy);
+                }
             }
+        }
+        
+        var outVertices = [];
+        var outFaces = [];
+        var outEdges = [];
+        var inter = [];
 
-            // process each face
-            for (var f = 0; f < inFaces.length; f++) {
+        const INSIDE = 0;
+        const OUTSIDE = 1;
+        const INTERSECT = 2;
+        const COPLANAR = 3;
 
-                var inFace = inFaces[f];
-                var outFace = [];
-                const len = outVertices.length;
-                const a = inVertices[inFace[0]];
-                const b = inVertices[inFace[1]];
-                const c = inVertices[inFace[2]];
-                const faceNormal = c.vsub(a).cross(b.vsub(a));
-                const coplanarInside = faceNormal.dot(plane.normal) > 0;
-                
-                // process each segment in the face
-                for (var i = 0; i < inFace.length; i++) {
+        // mark each vertex as in, out, coplanar
+        var vertexTest = []
+        inVertices.forEach(v => {
+            var point = new THREE.Vector3().copy(v);
+            var dist = plane.distanceToPoint(point);
+            var result = (dist < EPSILON) ? INSIDE : OUTSIDE;
+            if (result == INSIDE && dist > -EPSILON) result = COPLANAR;
+            vertexTest.push(result);
+        });
 
-                    // get vertex indices
-                    var currIdx = inFace[i];
-                    var prevIdx = inFace[(i + inFace.length - 1) % inFace.length];
-                    
-                    // check both points
-                    var curr = inVertices[currIdx];
-                    var prev = inVertices[prevIdx];
-                    var currInside = plane.distanceToPoint(curr) < EPSILON;
-                    var prevInside = plane.distanceToPoint(prev) < EPSILON;
+        var edgesTest = new Map();
 
-                    var currCoplanar = currInside && plane.distanceToPoint(curr) > -EPSILON;
-                    var prevCoplanar = prevInside && plane.distanceToPoint(prev) > -EPSILON;
+        // process edges
+        inEdges.forEach(face => {
 
-                    if (currCoplanar && !coplanarInside) {
-                        currInside = false;
-                    }
+            face.forEach(edge => {
 
-                    if (prevCoplanar && !coplanarInside) {
-                        prevInside = false;
-                    }
+                var a = edge.a;
+                var b = edge.b;
 
+                if (edgesTest.has(edge)) {
+                    // skip processed edges
+                    return;
+                } else if (vertexTest[a] == INSIDE && vertexTest[b] == INSIDE) {
+                    // fully inside edge
+                    edgesTest.set(edge, INSIDE);
+                    edgesTest.set(edge.reverse, INSIDE);
+                } else if (vertexTest[a] != vertexTest[b]) {
+    
                     // get intersection with bounding plane
                     var inter3 = new THREE.Vector3;
-                    plane.intersectLine(new THREE.Line3(prev, curr), inter3);
+                    plane.intersectLine(new THREE.Line3(inVertices[a], inVertices[b]), inter3);
                     var inter = new CANNON.Vec3().copy(inter3);
+    
+                    // replace clipped endpoint with intersection
+                    const index = inVertices.length;
 
-                    if (currInside) {
-
-                        if (!prevInside) {
-                            outFace.push(outVertices.length);
-                            interPoints.push(inter);
-                            outVertices.push(inter);
-                        }
-                        
-                        var newIdx;
-
-                        // have we seen this vertex before
-                        if (moved[currIdx] == -1) {
-                            newIdx = outVertices.length;
-                            outVertices.push(curr);
-                            moved[currIdx] = newIdx;
+                    if (vertexTest[a] == COPLANAR || vertexTest[b] == COPLANAR) {
+                        // special cases for coplanar points
+                        if (vertexTest[a] == OUTSIDE || vertexTest[b] == OUTSIDE) {
+                            // coplanar + outside = outside
+                            edgesTest.set(edge, OUTSIDE);
+                            edgesTest.set(edge.reverse, OUTSIDE);
                         } else {
-                            newIdx = moved[currIdx];
+                            if (vertexTest[b] == INSIDE) {
+                                edge.a = index;
+                                edge.reverse.b = index;
+                            } else {
+                                edge.b = index;
+                                edge.reverse.a = index;
+                            }
+                            edgesTest.set(edge, INTERSECT);
+                            edgesTest.set(edge.reverse, INTERSECT);
                         }
+                    } else {
 
-                        outFace.push(newIdx);
-
-                    } else if (prevInside) {
-                        outFace.push(outVertices.length);
-                        interPoints.push(inter);
-                        outVertices.push(inter);
+                        if (vertexTest[b] == INSIDE) {
+                            edge.a = index;
+                            edge.reverse.b = index;
+                        } else {
+                            edge.b = index;
+                            edge.reverse.a = index;
+                        }
+    
+                        edgesTest.set(edge, INTERSECT);
+                        edgesTest.set(edge.reverse, INTERSECT);
                     }
 
+                    // vertexTest[inVertices.length] = INTERSECT;
+                    inVertices.push(inter);
+    
+                } else {
+                    edgesTest.set(edge, OUTSIDE);
+                    edgesTest.set(edge.reverse, OUTSIDE);
                 }
-                
-                // clean up degenerate face
-                if (outFace.length < 3) {
-                    if (outFace.length !== 0) outVertices = outVertices.splice(len - 1);
-                    continue;
-                }
-                
-                outFaces.push(outFace);
 
+            });
+
+        });
+
+        // classify each face
+        let facesTest = [];
+        inEdges.forEach(face => {
+            let faceStatus = COPLANAR;
+            face.forEach(edge => {
+                let status = edgesTest.get(edge);
+                if (status == INTERSECT) {
+                    faceStatus = INTERSECT;
+                } else if (faceStatus != INTERSECT && status != COPLANAR) {
+                    faceStatus = status;
+                }
+            });
+            facesTest.push(faceStatus);
+        });
+
+        // process each face
+        for (var f = 0; f < inFaces.length; f++) {
+            
+            if (facesTest[f] == INSIDE || facesTest[f] == COPLANAR) {
+                // face is unchanged
+                outFaces.push(inFaces[f]);
+                outEdges.push(inEdges[f]);
+                continue;
+            } else if (facesTest[f] == OUTSIDE) {
+                // skip face
+                continue;
             }
 
-            // if (interPoints.length < 3) return;
+            var inFace = inFaces[f];
+            var inLoop = inEdges[f];
+            var outFace = [];
+            var outLoop = [];
 
-            // // get vertex order for face along plane
-            // var interPointsArray = [];
-            // var cannonMat = new CANNON.Mat3().copy(proj);
-            // interPoints.forEach(v => {
-            //     // convert to tangent space
-            //     var tan = new CANNON.Vec3();
-            //     cannonMat.vmult(v, tan);
-            //     interPointsArray.push([tan.x, tan.y]);
-            // });
+            // find vertices that occur only once
+            let count = new Map();
+            inLoop.forEach(edge => {
+                if (edgesTest.get(edge) == OUTSIDE) return;
+                count.has(edge.a) ? count.get(edge.a).value++ : count.set(edge.a, {value: 1});
+                count.has(edge.b) ? count.get(edge.b).value++ : count.set(edge.b, {value: 1});
+            });
 
-            // // array of pairs of indices into interPointsArray
-            // var hull = ConvexHull(interPointsArray);
+            let start = -1;
+            let end = -1;
+            count.forEach((number, index) => {
+                if (number.value == 1) {
+                    (start == -1) ? start = index : end = index;
+                }
+            });
+
+            if (start == -1 || end == -1) {
+                console.log("shouldn't happen: could not find clip edge")
+            }
             
-            // // don't create degenerate face
-            // if (hull.length == 0) return;
+            // add missing segment
+            let newEdge = {a: start, b: end};
+            let revNewEdge = {a: end, b: start};
+            newEdge.reverse = revNewEdge;
+            revNewEdge.reverse = newEdge;
+            edgesTest.set(newEdge, COPLANAR);
+            edgesTest.set(newEdge.reverse, COPLANAR);
 
-            // var hullIdxs = [];
-            // hull.forEach(edge => {
-            //     var pt = interPoints[edge[1]];
-            //     hullIdxs.push(outVertices.length);
-            //     outVertices.push(pt);
-            // });
+            // find an included vertex to start at
+            let index = 0;
+            while (!(vertexTest[inLoop[index].a] == INSIDE)) {
+                index++;
+            }
 
-            // outFaces.push(hullIdxs);
+            let closed = false;
+            for (let i = 0; i < inLoop.length; i++) {
 
-        });
-        
-        // temp(?) use convex hull instead of calculated faces
-        var hullVertices = [];
-        outVertices.forEach(v => {
-            hullVertices.push(v.toArray())
-        });
+                let curr = (index + i) % inLoop.length;
+                let edge = inLoop[curr];
+                let status = edgesTest.get(edge);
 
-        var hull = new ConvexHull(hullVertices);
+                if (status == OUTSIDE) {
+                    continue;
+                }
 
-        // empty hull emergency exit
-        if (hull.length == 0) {
+                if (status == INTERSECT && !closed) {
+                    outFace.push(edge.a);
+                    outFace.push(edge.b);
+                    outLoop.push(edge);
+                    let next = (edge.b == newEdge.a) ? newEdge : newEdge.reverse;
+                    outLoop.push(next);
+                    inter.push(next.reverse);
+                    closed = true;
+                } else {
+                    outFace.push(edge.a);
+                    outLoop.push(edge);
+                }
+
+            }
+            
+            // skip degenerate faces
+            if (outFace.length < 3) {
+                continue;
+            }
+            
+            outFaces.push(outFace);
+            outEdges.push(outLoop);
+
+        }
+
+        // create missing face in clip plane
+        if (inter.length >= 3) {
+
+            let interFace = [];
+            let interLoop = [];
+
+            // loop through edges
+            let edges = new Map();
+            inter.forEach(edge => {
+                edges.set(edge.a, edge);
+            });
+
+            let next = inter[0];
+            for (let i = 0; i < inter.length; i++) {
+                interLoop.push(next);
+                interFace.push(next.a);
+                next = edges.get(next.b);
+            }
+
+            outFaces.push(interFace);
+            outEdges.push(interLoop);
+
+        }
+
+        if (outFaces.length < 4) {
             return null;
         }
+
+        // reindex vertices to remove unused
+        var movedVertices = [];
+        for (var i = 0; i < inVertices.length; i++) {
+            movedVertices[i] = -1;
+        }
+        
+        for (let i = 0; i < outFaces.length; i++) {
+            for (let j = 0; j < outFaces[i].length; j++) {
+                let v = outFaces[i][j];
+                if (movedVertices[v] == -1) {
+                    movedVertices[v] = outVertices.length;
+                    outFaces[i][j] = outVertices.length;
+                    outVertices.push(inVertices[v]);
+                } else {
+                    outFaces[i][j] = movedVertices[v];
+                }
+            }
+        }
+
+        // get unique edges
+        var edges = new Set();
+        for (let i = 0; i < outEdges.length; i++) {
+            for (let j = 0; j < outEdges[i].length; j++) {
+                let edge = outEdges[i][j];
+                if (!(edges.has(edge) || edges.has(edge.reverse))) {
+                    edges.add(edge);
+                }
+            }
+        }
+
+        // update indices
+        edges.forEach(edge => {
+            edge.a = movedVertices[edge.a];
+            edge.b = movedVertices[edge.b];
+            edge.reverse.a = movedVertices[edge.reverse.a];
+            edge.reverse.b = movedVertices[edge.reverse.b];
+        });
 
         // move vertices so center is at 0,0,0 in object space
         for (var i = 0; i < outVertices.length; i++) {
             outVertices[i] = outVertices[i].vsub(center);
-        }
+        }       
 
         // create and return new PhysObject
-        return new PhysObject(outVertices, hull, this.body.mass / 4);
+        return new PhysObject(outVertices, outFaces, this.body.mass, outEdges);
 
     }
     
@@ -388,9 +618,10 @@ export default class PhysObject {
         // cannon ContactEquation
         var collision = event.contact;
         var body = event.target;
-        var relv = body.mass * collision.getImpactVelocityAlongNormal();
+        var momentum = body.mass * collision.getImpactVelocityAlongNormal();
         
-        if (relv < 20) {
+        // don't break on gentle impact
+        if (momentum < 60) {
             return;
         }
 
