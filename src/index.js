@@ -1,5 +1,7 @@
 import Game from "./js/Game.js"
 
+require('./style.css');
+
 var game = new Game();
 game.loop();
 
