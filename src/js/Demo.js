@@ -2,8 +2,6 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 
-import {CannonDebugRenderer} from 'cannon/tools/threejs/CannonDebugRenderer';
-
 import PhysObject from './PhysObject.js';
 
 // assets
@@ -38,7 +36,6 @@ export default class Demo {
 
         this.world = new CANNON.World();
         this.world.gravity.set(0, -9.8, 0);
-        // this.debugger = new THREE.CannonDebugRenderer(this.scene, this.world);
 
         // RENDERER
 
@@ -146,8 +143,6 @@ export default class Demo {
     update() {
 
         this.world.step(1 / 60);
-
-        // this.debugger.update();
 
         // remove any objects that are far away
         for (var i = this.objects.length - 1; i >= 0; i--) {

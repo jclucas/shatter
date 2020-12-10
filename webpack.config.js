@@ -44,15 +44,3 @@ const config = {
 };
 
 module.exports = config;
-
-// generate list of HtmlWebpackPlugin with entry point names
-let generateHTML = (filenames) => {
-    htmlPlugins = [];
-    filenames.forEach(name => {
-        let plugin = new HtmlWebpackPlugin({
-            template: `src/${name}.html`
-        });
-        htmlPlugins.push(plugin);
-    });
-    return htmlPlugins;
-}
