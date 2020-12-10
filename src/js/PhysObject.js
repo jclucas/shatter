@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon';
-import { KeyframeTrack } from 'three';
 var Voronoi = require('voronoi');
 
 const EPSILON = 1e-5;
@@ -161,12 +160,11 @@ export default class PhysObject {
     };
 
     /**
-     * Partition geometry based on an impact point.
-     * Fortune's algorithm goes here.
+     * Break geometry based on an impact point.
      * @param {CANNON.Vec3} impact 
      * @return {Array} of new PhysObjects to add to the game state
      */
-    partition(impact) {
+    breakOnImpact(impact) {
 
         // generate points
         var radius = this.body.shapes[0].boundingSphereRadius / 2 ;
@@ -174,64 +172,13 @@ export default class PhysObject {
 
         // find dividing edges
         var edges = this.segment(points);
-        var bounds = [];
+
+        // convert to planes
         const up = new CANNON.Vec3(0, 0, 1);
-
-        // convert edge loop to list of planes
-        edges.forEach(loop => {
-            var planes = [];
-            for (var i = 0; i < loop.length; i++) {
-
-                var curr = loop[i];
-                var next = loop[(i + 1) % loop.length];
-                
-                // find normal
-                var n = up.cross(next.vsub(curr));
-                n.normalize();
-
-                // create plane
-                var p = new THREE.Plane();
-                p.setFromNormalAndCoplanarPoint(n, curr);
-                planes.push(p);
-
-            }
-            bounds.push(planes);
-        });
+        let bounds = PhysObject.getDividingPlanes(edges, up);
         
-        // generate list of new bodies
-        var objects = [];
-
-        // clip each bound and create a new object
-        for (var i = 0; i < bounds.length; i++) {
-
-            var fragment = this;
-
-            for (var j = 0; j < bounds[i].length; j++) {
-                if (fragment == null) continue;
-                let center = (j == bounds[i].length - 1) ? points[i] : new CANNON.Vec3(0, 0, 0);
-                fragment = fragment.clip(bounds[i][j], center);
-            }
-
-            if (fragment == null) continue;
-
-            // create and place fragment
-            fragment.init();
-            var offset = this.body.quaternion.vmult(points[i]);
-            fragment.body.position.copy(this.body.position.vadd(offset));
-            fragment.body.quaternion.copy(this.body.quaternion);
-
-            // adjust physics properties
-            let relMass = fragment.body.shapes[0].volume() / this.body.shapes[0].volume();
-            fragment.body.mass *= relMass;
-            fragment.body.velocity.copy(this.body.velocity);//.scale(relMass);
-            fragment.body.angularVelocity.copy(this.body.angularVelocity);//.scale(relMass);
-            fragment.body.inertia.copy(this.body.inertia);
-            fragment.body.force.copy(this.body.force);
-            fragment.update();
-            objects.push(fragment);
-        }
-
-        return objects;
+        // generate fragments
+        return this.break(points, bounds);
 
     };
 
@@ -293,8 +240,53 @@ export default class PhysObject {
     }
 
     /**
+     * Generate new PhysObj fragments
+     * @param {Array} points 
+     * @param {Array} bounds 
+     */
+    break(points, bounds) {
+
+        // generate list of new bodies
+        var objects = [];
+
+        // clip each bound and create a new object
+        for (var i = 0; i < bounds.length; i++) {
+
+            var fragment = this;
+
+            for (var j = 0; j < bounds[i].length; j++) {
+                if (fragment == null) continue;
+                let center = (j == bounds[i].length - 1) ? points[i] : new CANNON.Vec3(0, 0, 0);
+                fragment = fragment.clip(bounds[i][j], center);
+            }
+
+            if (fragment == null) continue;
+
+            // create and place fragment
+            fragment.init();
+            var offset = this.body.quaternion.vmult(points[i]);
+            fragment.body.position.copy(this.body.position.vadd(offset));
+            fragment.body.quaternion.copy(this.body.quaternion);
+
+            // adjust physics properties
+            let relMass = fragment.body.shapes[0].volume() / this.body.shapes[0].volume();
+            fragment.body.mass *= relMass;
+            fragment.body.velocity.copy(this.body.velocity).scale(relMass);
+            fragment.body.angularVelocity.copy(this.body.angularVelocity).scale(relMass);
+            fragment.body.inertia.copy(this.body.inertia);
+            fragment.body.force.copy(this.body.force);
+            fragment.body.updateMassProperties();
+            fragment.update();
+            objects.push(fragment);
+        }
+
+        return objects;
+
+    }
+
+    /**
      * 
-     * @param {Array} loop array of points defining a voronoi cell
+     * @param {THREE.Plane} plane to clip the object against
      * @return {CANNON.Shape} or null
      */
     clip(plane, center) {
@@ -631,6 +623,41 @@ export default class PhysObject {
         this.impact = dist;
 
     };
+
+    /**
+     * Generate a set of halfplanes from a set of edges
+     * @param {Array} edges 
+     * @param {THREE.Vector3} up 
+     */
+    static getDividingPlanes(edges, up) {
+        
+        var bounds = [];
+
+        // convert edge loop to list of planes
+        edges.forEach(loop => {
+            var planes = [];
+            for (var i = 0; i < loop.length; i++) {
+
+                var curr = loop[i];
+                var next = loop[(i + 1) % loop.length];
+                
+                // find normal
+                var n = new THREE.Vector3();
+                n.crossVectors(up, next.vsub(curr));
+                n.normalize();
+
+                // create plane
+                var p = new THREE.Plane();
+                p.setFromNormalAndCoplanarPoint(n, curr);
+                planes.push(p);
+
+            }
+            bounds.push(planes);
+        });
+
+        return bounds;
+
+    }
 
 }
 

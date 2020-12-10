@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 
+import {CannonDebugRenderer} from 'cannon/tools/threejs/CannonDebugRenderer';
+
 import PhysObject from './PhysObject.js';
 
 // assets
@@ -36,6 +38,7 @@ export default class Demo {
 
         this.world = new CANNON.World();
         this.world.gravity.set(0, -9.8, 0);
+        // this.debugger = new THREE.CannonDebugRenderer(this.scene, this.world);
 
         // RENDERER
 
@@ -86,7 +89,8 @@ export default class Demo {
         loader.load(hand, function(obj) {
             this.cursor = obj.children[0];
             this.cursor.translateX(-10); // hide until active
-            this.cursor.setRotationFromEuler(new THREE.Euler(Math.PI/2, -Math.PI/2, Math.PI/6));
+            let rotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI/2, -Math.PI/2, Math.PI/6));
+            this.cursor.setRotationFromQuaternion(rotation.premultiply(this.camera.quaternion));
             this.cursor.material = new THREE.MeshLambertMaterial({ color: 0xffffbb });
             this.scene_cursor.add(this.cursor);
 
@@ -142,6 +146,8 @@ export default class Demo {
     update() {
 
         this.world.step(1 / 60);
+
+        // this.debugger.update();
 
         // remove any objects that are far away
         for (var i = this.objects.length - 1; i >= 0; i--) {
@@ -270,7 +276,7 @@ export default class Demo {
         var dist = obj.body.impact;
 
         // generate tesselation
-        var fragments = obj.partition(dist);
+        var fragments = obj.breakOnImpact(dist);
 
         fragments.forEach(f => {
 

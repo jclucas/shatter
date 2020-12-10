@@ -11,3 +11,9 @@ canvas {
 a {
     color: #d32000;
 }
+
+pre code {
+    display: block;
+    padding: 20px;
+    background-color: #d0d0d0;
+}

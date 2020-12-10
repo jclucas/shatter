@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+
+    <head>
+        <title>Learn more</title>
+    </head>
+
+    <body>
+
+        <h1>Real-Time Brittle Fracture</h1>
+        <hr />
+
+        <ol>
+            <li><a href="#concepts">Main Concepts</a></li>
+            <li><a href="#algorithm">Algorithms</a></li>
+            <li><a href="#complexity">Complexity Analysis</a></li>
+            <li><a href="#refs">References</a></li>
+        </ol>
+        <hr />
+        
+
+        <p>This project showcases a technique called <i>Voronoi fracture</i> or <i>Voronoi shatter</i>, a heuristic method for simulating brittle fracture, to animate breakable ceramic plates. Swing and smash these plates against surfaces and each other to experience catharsis through destruction.</p>
+
+        <p>When a breakable object experiences a collision of significant energy, the method takes the following steps:</p>
+
+        <ul>
+            <li>Generate a set of seed points</li>
+            <li>Calculate a voronoi tessellation of the seed points</li>
+            <li>Clip the original object against the Voronoi tessellation.</li>
+        </ul>
+
+        <p>Try it yourself below; click to place up to 25 points on the object, then click on the hammer to break it.</p>
+
+        <div id="demo1"></div>
+
+
+        <h2 id="concepts">Main concepts</h2>
+
+        <p>A Voronoi diagram is a spatial division based on a set of seed points. In the diagram, each seed point corresponds to one subdivision, called a Voronoi cell, which contains only the points that are closer to its corresponding seed point than to any other seed point. </p>
+
+        <p>In real life, a material breaks when the amount of stress on it exceeds its capacity to remain whole. A brittle material, as opposed to a ductile one, does not deform before breaking. </p>
+
+        <p>This method does not simulate any of those physical processes. Mathematically, Voronoi tessellation has nothing to do with brittle materials at all. However, Voronoi diagrams are visually reminiscent of broken plates, and by specifying the seed points from which the diagram is generated, we have further control over its appearance. Because of this, it can be leveraged to create visually believable but entirely non-physical fracture simulation.</p>
+
+
+        <h2 id="algorithm">Algorithms</h2>
+
+        <h3>Point generation</h3>
+
+        <p>Points are generated with a uniform distribution over a circle with a given radius and center. In the live version of the project, the center of the circle is halfway between the impact point and the center of the object, and the radius is half the radius of the object’s bounding sphere. 5 points are generated at each impact. The combination of these three parameters defines the appearance of the fracture.</p>
+
+        <h3>Voronoi tessellation</h3>
+
+        <p>Voronoi diagrams are generated using Fortune’s algorithm, a sweep line technique that keeps track of Voronoi cell boundaries as it moves across the set of seed points. For this project, I used a library implementation of Fortune’s algorithm.</p>
+
+        <h3>Clipping</h3>
+
+        <p>To achieve the appearance of a shattered object, the original object is decomposed into a set of fragments. Each fragment is created by clipping the original object against each halfplane defining a Voronoi cell, with each Voronoi cell resulting in a single fragment. The pseudocode for dividing an object into fragments is as follows: </p>
+
+<pre><code>break(diagram):
+    fragments = []
+    for each cell in diagram:
+        fragment = this
+        for each plane in cell:
+            fragment = fragment.clip(plane)
+        fragments.add(fragment)
+    return fragments
+</code></pre>
+
+        <p>Given a Voronoi tessellation, the function returns a set of new objects to instantiate.</p>
+
+        <p>To clip an object against a single halfplane, I used a method loosely based on the Sutherland-Hodgman algorithm, a method of polygon clipping that walks around the edges of a polygon and saves only the vertices that are inside the clipping bounds, and the intersections of the polygon edges with the bounds they cross. To extend the algorithm to 3D polyhedra, I clipped all edges that intersect the bounding halfplane and then reconstructed each face from the clipped and fully inside edges.</p>
+        
+<pre><code>clip(plane):
+    mark points as inside or outside
+    mark segments as inside, outside, or intersected
+    trim each intersected segment
+    for each input_face:
+        for each edge in input_face:
+            if edge is inside:
+                output_face.add(edge.p1)
+            else if edge is intersected:
+                output_face.add(edge.p1, edge.p2)        
+</code></pre>
+
+        <p>This method relies on having a doubly-connected edge list representation of the polyhedron to avoid repeat processing of any vertices or edges.</p>
+
+        <h2 id="complexity">Complexity Analysis</h2>
+
+        <p>Compared to rendering or iterating the physics solver, objects are broken relatively infrequently. Therefore, the bounds on the input size are much more dependent on the complexity of both rendering and physics. Of those two functionalities, physics, specifically collision detection, is the most computationally intensive. Because of this, the input size (i.e. the detail level of the initial breakable object mesh) is low.</p>
+
+        <p>Because of the constrained input size and existing computational bottlenecks in the system, it is not necessary for the fracture solution to be optimal.</p>
+
+        <p>Euler’s formula states that for any planar graph with V vertices, E edges, and  F faces, V - E + F = 2. Because a convex polyhedron reduces to a planar graph, we can apply Euler’s formula in analysis of this problem. Specifically, it implies that V, E, and F are linearly related, and therefore that an algorithm that is, for instance, O(V) is also O(E) and O(F), which simplifies complexity analysis.</p>
+
+        <p>Because a constant number of seed points are generated per impact, and the number of bounding planes varies linearly with the number of seed points, the number of clipping planes can be considered constant.</p>
+
+        <p>The clipping algorithm itself is O(n log n), as it uses O(log n) dictionary operations within O(n) loops. </p>
+
+
+        <h2 id="refs">References</h2>
+
+        <h3>Packages</h3>
+
+        <ul>
+            <li><a href="https://threejs.org/">three.js</a> - rendering and geometric utilities</li>
+            <li><a href="https://schteppe.github.io/cannon.js/">cannon.js</a> - physics and geometric utilities</li>
+            <li><a href="https://www.npmjs.com/package/voronoi">voronoi</a> - Voronoi tessellation</li>
+            <li><a href="https://webpack.js.org/">webpack</a> - build tool</li>
+        </ul>
+
+    </body>
+
+</html>
